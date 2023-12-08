@@ -11,7 +11,7 @@ num_procs = comm_world.Get_size()
 # global_sample_size = Sample size (evenly divisible by num_procs)
 # num_procs = Number of processes
 global_list_size = 10000
-sub_sample_size = 16
+sub_sample_size = 64
 global_sample_size = sub_sample_size * num_procs
 global_sample = np.empty((global_sample_size), dtype=np.intc)
 splitter = np.empty((num_procs+1), dtype=np.intc)
