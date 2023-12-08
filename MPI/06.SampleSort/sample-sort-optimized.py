@@ -7,11 +7,75 @@ my_rank = comm_world.Get_rank()
 num_procs = comm_world.Get_size()
 status = MPI.Status()
 
+# performs parallel odd-even transposition sorting
+def sort(data, n):
+  local_n = n//num_procs
+  # pre-allocate necessary buffers and arrays
+  rcv_buf = np.zeros(local_n, dtype=np.intc)
+  rcv_buf2 = np.zeros(local_n, dtype=np.intc)
+  temp = np.zeros(local_n, dtype=np.intc)
+
+  # scatter data into each processors
+  comm_world.Scatter((data, local_n, MPI.INT), (rcv_buf, local_n, MPI.INT))
+
+  rcv_buf = np.sort(rcv_buf)
+
+  if my_rank % 2 == 0:
+    oddrank = my_rank-1
+    evenrank = my_rank+1
+  else:
+    oddrank = my_rank+1
+    evenrank = my_rank-1
+
+  if oddrank == -1 or oddrank == num_procs:
+    oddrank = MPI.PROC_NULL
+  if evenrank == -1 or evenrank == num_procs:
+    evenrank = MPI.PROC_NULL
+
+  for p in range(num_procs):
+    if p % 2 == 0:
+      comm_world.Sendrecv((rcv_buf, local_n, MPI.INT), evenrank, 1, (rcv_buf2, local_n, MPI.INT), evenrank, 1, status)
+    else:
+      comm_world.Sendrecv((rcv_buf, local_n, MPI.INT), oddrank, 1, (rcv_buf2, local_n, MPI.INT), oddrank, 1, status)
+    for i in range(local_n):
+      temp[i] = rcv_buf[i]
+    
+    if status.source == MPI.PROC_NULL:
+      continue
+    # start comparison for smaller rank, receive smaller number during comparison
+    elif my_rank < status.source:
+      i = j = k = 0
+      while k < local_n:
+        if j == local_n or (i < local_n and temp[i] < rcv_buf2[j]):
+          rcv_buf[k] = temp[i]
+          i += 1
+        else:
+          rcv_buf[k] = rcv_buf2[j]
+          j += 1
+        k += 1
+    # start comparison for larger rank, receive larger number during comparison
+    else:
+      i = j = k = local_n - 1
+      while k >= 0:
+        if j == -1 or (i >= 0 and temp[i] >= rcv_buf2[j]):
+          rcv_buf[k] = temp[i]
+          i -= 1
+        else:
+          rcv_buf[k] = rcv_buf2[j]
+          j -= 1
+        k -= 1
+
+  comm_world.Gather((rcv_buf, local_n, MPI.INT), (data, local_n, MPI.INT), 0)
+  comm_world.Barrier()
+
+  if my_rank == 0:
+    return data
+
 # global_list_size = Total number of elements (evenly divisible by num_procs)
 # global_sample_size = Sample size (evenly divisible by num_procs)
 # num_procs = Number of processes
 global_list_size = 10000
-sub_sample_size = 16
+sub_sample_size = 64
 global_sample_size = sub_sample_size * num_procs
 global_sample = np.empty((global_sample_size), dtype=np.intc)
 splitter = np.empty((num_procs+1), dtype=np.intc)
@@ -42,9 +106,10 @@ for i in range(sub_sample_size):
 # Gather all the sub_samples onto the root process
 comm_world.Gather(sub_sample, global_sample, root=0)
 
+global_sample = sort(global_sample, global_sample_size)
+
 # Find splitters from global_sample
 if(my_rank == 0):
-  global_sample.sort()
   splitter[0] = -2147483648
   for i in range(1, num_procs):
     splitter[i] = ((global_sample[i-1] - global_sample[i]) // 2) + global_sample[i]
