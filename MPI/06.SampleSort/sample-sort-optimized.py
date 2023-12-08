@@ -1,6 +1,7 @@
 from mpi4py import MPI
 import numpy as np
 import random
+import time
 
 comm_world = MPI.COMM_WORLD
 my_rank = comm_world.Get_rank()
@@ -93,6 +94,9 @@ if(my_rank == 0):
 # Every process here now receives sublist with n/p elements
 comm_world.Scatter(list, local_list, root=0)
 
+# Measure start time
+start_time = time.time()
+
 # Every process should choose sub_sample_size subsample from its sublist
 sub_sample = np.empty((sub_sample_size), dtype=np.intc)
 chosen_sub_sample = set()
@@ -173,6 +177,8 @@ if(my_rank == 0):
     ex_bucket_offsets[i] = ex_bucket_offsets[i-1] + global_bucket_counts[i-1]
 comm_world.Gatherv([local_bucket_list, local_bucket_size, MPI.INT], [list, global_bucket_counts, ex_bucket_offsets, MPI.INT], root=0)
 
+end_time = time.time()
+
 if(my_rank == 0):
   sorted = True
   for i in range(len(list)-1):
@@ -185,3 +191,4 @@ if(my_rank == 0):
   else:
     print(f"List is sorted properly.")
     print(f"{list}")
+    print(f"Total execution time: {end_time - start_time}")
